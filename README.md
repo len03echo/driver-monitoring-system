@@ -45,51 +45,43 @@ MediaPipe Face Mesh 提取面部关键点，计算 EAR（眼睛纵横比）、MA
 
 状态面板同步展示眼睛、嘴巴、头部与危险行为状态，以及 FPS、告警次数和累计持续时间，异常项通过颜色变化突出显示。
 
+## Web 管理后台（当前扩展版）
+
+以下界面来自当前扩展版的历史演示记录，本轮未重新运行 Web 端。Dashboard 展示当日告警、驾驶员与会话概览，以及近 7 天趋势和告警类型分布；Drivers 提供档案查询、新增与删除；Alerts 支持分页、多条件筛选和截图预览。驾驶员姓名、工号及告警截图中的人脸均已匿名化。
+
+### Dashboard 数据看板
+
+![Web 数据看板](docs/screenshots/web-dashboard.png)
+
+### Drivers 驾驶员管理
+
+![Web 驾驶员管理匿名化截图](docs/screenshots/web-drivers-anonymized.png)
+
+### Alerts 告警记录
+
+![Web 告警记录匿名化截图](docs/screenshots/web-alerts-anonymized.png)
+
+Vue 3 前端通过 Axios 调用 Flask 路由，服务端由 Routes、Services 与 SQLAlchemy Models 分层访问 MySQL。当前源码提供以下接口：
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET / POST | `/api/drivers` | 查询或新增驾驶员 |
+| DELETE | `/api/drivers/<id>` | 删除驾驶员 |
+| GET | `/api/alerts` | 分页查询并按类型、等级、驾驶员和日期筛选告警 |
+| GET | `/api/stats/overview` | 查询当日告警、驾驶员总数和当日会话数 |
+| GET | `/api/stats/trend` | 查询近 7 天告警趋势 |
+| GET | `/api/stats/type` | 查询告警类型分布 |
+| GET | `/snapshots/<filename>` | 读取告警截图静态文件 |
+
+前端封装了驾驶员、告警与统计请求；告警缩略图通过 `/snapshots/` 路径直接加载。API 未实现生产级身份鉴权，当前定位为本地演示。
+
 ## 系统设计
 
 ### 1. 系统总体架构
 
 系统按职责划分为数据持久化层、核心检测层、业务逻辑层和用户交互层。当前扩展版在原桌面端之外增加了 Flask API 与 Vue 管理后台。
 
-```mermaid
-flowchart TB
-    IN[摄像头或本地视频]
-
-    subgraph UI[用户交互层]
-        DESKTOP[PyQt5 桌面客户端]
-        WEB[Vue 3 管理后台<br/>当前扩展]
-    end
-
-    subgraph BIZ[业务逻辑层]
-        THREAD[DetectionThread 检测线程]
-        API[Flask REST API<br/>当前扩展]
-    end
-
-    subgraph CORE[核心检测层]
-        YOLO[YOLOv8<br/>危险行为检测]
-        FATIGUE[MediaPipe<br/>疲劳检测]
-        FACE[InsightFace<br/>人脸认证]
-        ALERT[AlertEngine<br/>告警引擎]
-    end
-
-    subgraph DATA[数据持久化层]
-        DB[(MySQL 数据库)]
-        SHOT[告警截图目录]
-    end
-
-    IN --> THREAD
-    DESKTOP -->|控制监测| THREAD
-    THREAD -->|帧与检测信号| DESKTOP
-    THREAD -->|逐帧调用| YOLO
-    THREAD -->|逐帧调用| FATIGUE
-    DESKTOP -->|认证对话框| FACE
-    FACE -->|查询已注册特征| DB
-    THREAD -->|异常事件| ALERT
-    ALERT --> SHOT
-    ALERT -->|告警记录| DB
-    DB <--> API
-    API <--> WEB
-```
+![系统总体架构图](docs/diagrams/system-architecture.png)
 
 - **数据持久化层**：保存驾驶员、监测会话和告警记录；截图目录与运行数据默认不公开。
 - **核心检测层**：封装危险行为、疲劳状态、人脸特征与预警处理。
@@ -100,65 +92,13 @@ flowchart TB
 
 ### 2. 监测业务流程
 
-```mermaid
-flowchart TD
-    START([程序启动]) --> DEP{依赖检查通过}
-    DEP -- 否 --> START_ERR[记录错误并退出]
-    DEP -- 是 --> CFG{配置加载成功}
-    CFG -- 否 --> START_ERR
-    CFG -- 是 --> UI_INIT[创建 Qt 应用与主窗口]
-    UI_INIT --> SOURCE[选择摄像头或本地视频]
-    SOURCE --> OPEN{视频源打开成功}
-    OPEN -- 否 --> VIDEO_ERR[显示错误并等待重新选择]
-    VIDEO_ERR --> SOURCE
-    OPEN -- 是 --> PREVIEW[DetectionThread 启动视频预览]
-    PREVIEW --> AUTH{驾驶员认证成功}
-    AUTH -- 否或取消 --> PREVIEW
-    AUTH -- 异常 --> AUTH_ERR[记录并显示认证错误]
-    AUTH_ERR --> PREVIEW
-    AUTH -- 是 --> MONITOR[创建检测器与告警引擎<br/>创建监测会话并启用检测]
-    MONITOR --> FRAME{读取到视频帧}
-    FRAME -- 读取错误 --> FRAME
-    FRAME -- 视频结束 --> STOP
-    FRAME -- 是 --> DETECT[YOLOv8 与 MediaPipe 检测]
-    DETECT --> DISPLAY[发送视频帧和检测结果<br/>更新状态面板与 FPS]
-    DETECT --> HAS_ALERT{是否产生异常事件}
-    HAS_ALERT -- 是 --> ALERT_FLOW[交给告警逻辑]
-    HAS_ALERT -- 否 --> END_CHECK
-    DISPLAY --> END_CHECK{停止监测}
-    ALERT_FLOW --> END_CHECK
-    END_CHECK -- 否 --> FRAME
-    END_CHECK -- 是 --> STOP[结束会话并关闭检测<br/>保留视频预览]
-```
+![监测业务流程图](docs/diagrams/monitoring-workflow.png)
 
 预览阶段关闭行为与疲劳检测；认证成功后才创建检测器、告警引擎和监测会话。视频源打不开、配置加载失败或认证异常时分别进入源码对应的错误处理分支。
 
 ### 3. 告警触发逻辑
 
-```mermaid
-flowchart TD
-    FRAME[当前视频帧] --> YOLO_CHECK[YOLOv8 行为检测]
-    FRAME --> FATIGUE_CHECK[MediaPipe 疲劳检测]
-    YOLO_CHECK --> YOLO_COUNT{同类行为达到<br/>连续帧阈值}
-    FATIGUE_CHECK --> FATIGUE_COUNT{闭眼 打哈欠或低头<br/>达到各自连续帧阈值}
-    YOLO_COUNT -- 否 --> UI_UPDATE[发送检测结果并更新状态面板]
-    FATIGUE_COUNT -- 否 --> UI_UPDATE
-    YOLO_COUNT -- 是 --> MERGE[汇总异常类型]
-    FATIGUE_COUNT -- 是 --> MERGE
-    MERGE --> UI_UPDATE
-    MERGE --> READY{AlertEngine 与数据库<br/>是否可用}
-    READY -- 否 --> NEXT[跳过持久化告警处理]
-    READY -- 是 --> COOL{该告警类型是否处于<br/>默认 30 秒冷却期}
-    COOL -- 是 --> SUPPRESS[抑制同类重复告警]
-    COOL -- 否 --> SNAP[保存当前帧截图]
-    SNAP --> SOUND[播放告警音效]
-    SOUND --> DB_WRITE[写入数据库告警记录]
-    DB_WRITE --> UPDATE_COOL[更新该类型冷却时间]
-    UPDATE_COOL --> NEXT_FRAME([处理下一帧])
-    SUPPRESS --> NEXT_FRAME
-    NEXT --> NEXT_FRAME
-    UI_UPDATE --> NEXT_FRAME
-```
+![告警触发逻辑图](docs/diagrams/alert-trigger-logic.png)
 
 连续帧阈值在 YOLOv8 与 MediaPipe 检测器内部独立判断；`DetectionThread` 只汇总已经触发的异常。状态面板接收检测结果并更新，`AlertEngine` 则按告警类型独立执行冷却、截图、音效与数据库记录。
 
@@ -167,6 +107,12 @@ flowchart TD
 ### QThread 检测线程
 
 `DetectionThread` 继承 `QThread`，在后台完成视频帧读取、YOLOv8 与 MediaPipe 推理、告警处理和帧率控制。主线程负责界面渲染与交互，两者通过 `frame_ready`、`detection_result`、`status_changed`、`error_occurred`、`fps_updated` 等 Qt 信号通信；运行、暂停和组件切换状态由 `QMutex` 保护，避免推理阻塞界面事件循环。
+
+### MediaPipe 疲劳检测算法
+
+![MediaPipe 疲劳检测算法流程图](docs/diagrams/mediapipe-fatigue-pipeline.png)
+
+`refine_landmarks=True` 时 Face Mesh 返回 478 个关键点。双眼索引分别为 `[362,385,387,263,373,380]` 与 `[33,160,158,133,153,144]`，嘴部索引为 `[61,13,14,312,291,17,18,200]`。单眼 `EAR=(d(p2,p6)+d(p3,p5))/(2*d(p1,p4))`，双眼结果再取平均；`MAR=(d(p2,p8)+d(p3,p7)+d(p4,p6))/(3*d(p1,p5))`；头部角度由鼻尖至下巴向量计算为 `degrees(atan2(abs(dx),dy))`。未检测到人脸时，结果回退为 `ear=1.0`、`mar=0.0`、`head_angle=0.0`，三类计数器全部清零且不输出告警类型。危险等级映射为闭眼 `high`，哈欠与低头 `medium`。
 
 ### 连续帧预警
 
@@ -202,6 +148,7 @@ train/                训练与预测脚本（不含训练数据）
 database/init.sql     MySQL 建表脚本
 tests/                单元、集成和属性测试
 docs/screenshots/     已脱敏的历史运行截图
+docs/diagrams/        架构与检测流程图
 docs/training_curves/ 历史训练曲线与原始 results.csv
 ```
 
