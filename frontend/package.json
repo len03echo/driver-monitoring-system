@@ -1,0 +1,22 @@
+{
+  "name": "driver-monitor-frontend",
+  "version": "1.0.0",
+  "description": "智能驾驶员状态监测系统 Web 管理后台",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.3.4",
+    "vue-router": "^4.2.5",
+    "element-plus": "^2.4.1",
+    "axios": "^1.5.0",
+    "echarts": "^5.4.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.4.0",
+    "vite": "^4.4.9"
+  }
+}

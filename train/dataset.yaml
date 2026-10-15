@@ -1,0 +1,23 @@
+# YOLOv8 Dataset Configuration
+# 数据集配置文件
+
+# 类别数量
+nc: 4
+
+# 类别名称（按照 class_id 顺序）
+names: ['face', 'smoke', 'phone', 'drink']
+
+# 数据集路径（请根据实际情况填写）
+# 路径可以是绝对路径或相对于此文件的路径
+# 数据集路径（请根据实际情况填写，建议使用相对路径以支持复现）
+train: ../dataset/images/train
+val: ../dataset/images/val
+
+# 示例路径结构：
+# dataset/
+#   ├── images/
+#   │   ├── train/  (2818张图片)
+#   │   └── val/    (705张图片)
+#   └── labels/
+#       ├── train/  (2818个txt标签文件)
+#       └── val/    (705个txt标签文件)

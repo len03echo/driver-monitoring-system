@@ -1,0 +1,114 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+driver_monitor.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Model Files — not published pending redistributability review
+*.pt
+*.onnx
+*.pth
+*.h5
+*.pb
+models/
+weights/
+
+# InsightFace Models
+.insightface/
+
+# Snapshots and Avatars
+snapshots/
+avatars/
+uploads/
+
+# Test Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.hypothesis/
+pytest_result.txt
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.cache/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary Files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# PyCharm
+.idea/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre
+.pyre/
+
+# Sensitive media and dataset outputs
+data/
+dataset/
+train/runs/
+train/zy_bs/
+PPT/
+软著/
+整理报告.md
+*.zip

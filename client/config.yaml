@@ -1,0 +1,42 @@
+# 智能驾驶员状态监测系统 - 客户端配置文件
+
+# 数据库连接配置
+database:
+  host: "127.0.0.1"
+  port: 3306
+  user: "root"
+  password: ""   # 请在项目根目录 .env 的 DB_PASSWORD 中填写密码，不要提交真实密码
+  name: "driver_monitor"
+
+# 摄像头配置
+camera:
+  device_index: 0
+  fps_min: 15
+  mirror_display: false  # 是否镜像显示（false=正常显示，true=镜像显示）
+
+# 模型配置
+model:
+  yolo_path: "yolov8_behavior.pt"
+  insightface_name: "buffalo_l"
+
+# 检测参数配置
+detection:
+  behavior_threshold: 10        # 行为检测连续帧阈值（暂时禁用）
+  ear_threshold: 0.2            # 眼睛纵横比阈值（降低阈值，减少误报）
+  mar_threshold: 0.65           # 嘴巴纵横比阈值（调整为0.65）
+  head_down_angle: 30.0         # 低头角度阈值（度）
+  eye_closed_frames: 25         # 闭眼触发帧数（增加帧数减少误报）
+  yawning_frames: 12            # 哈欠触发帧数（减少帧数提高敏感度）
+  face_similarity_threshold: 0.5 # 人脸相似度阈值
+
+# 告警配置
+alert:
+  cooldown_seconds: 30
+  sound_path: "assets/alert.wav"
+  snapshot_dir: "snapshots/"
+
+# YOLOv8 性能配置
+yolo:
+  inference_timeout_ms: 200
+  inference_size: 320        # 推理图像尺寸（320/416/640，越小越快）
+  use_half: true             # 是否使用 FP16 半精度（仅 GPU，需要支持）
