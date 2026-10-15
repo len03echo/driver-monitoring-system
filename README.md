@@ -2,8 +2,9 @@
 
 **Intelligent Driver State Monitoring System** — 基于 PyQt5、YOLOv8、MediaPipe、InsightFace、Flask 与 Vue 3 的驾驶员状态监测实践项目。
 
-> 项目作者：Len（李恩念）｜南京邮电大学·信息工程｜2027 届  
-> 项目成果：已取得软件著作权登记证书。证书及完整登记材料不在本仓库中。
+> **个人课程项目 / Personal Course Project**
+>
+> 已取得软件著作权登记证书；证书、完整登记材料及个人信息不在本仓库中。
 
 **English overview:** A driver-state monitoring project with a PyQt5 desktop client, YOLOv8 behavior detection, MediaPipe fatigue analysis, InsightFace authentication, a Flask/MySQL API, and a Vue 3 dashboard. Model weights, datasets, personal media, runtime credentials, and the complete software-copyright application are not distributed here.
 
@@ -44,21 +45,122 @@ MediaPipe Face Mesh 提取面部关键点，计算 EAR（眼睛纵横比）、MA
 
 状态面板同步展示眼睛、嘴巴、头部与危险行为状态，以及 FPS、告警次数和累计持续时间，异常项通过颜色变化突出显示。
 
-## 四层架构
+## 系统设计
+
+### 1. 系统总体架构
 
 系统按职责划分为数据持久化层、核心检测层、业务逻辑层和用户交互层。当前扩展版在原桌面端之外增加了 Flask API 与 Vue 管理后台。
 
 ```mermaid
-flowchart BT
-    A[数据持久化层<br/>MySQL / PyMySQL / 告警截图] --> B[核心检测层<br/>YOLOv8 / MediaPipe / InsightFace / AlertEngine]
-    B --> C[业务逻辑层<br/>DetectionThread / 会话与告警编排 / Flask Services]
-    C --> D[用户交互层<br/>PyQt5 桌面端 / Flask REST API / Vue 3 管理后台]
+flowchart TB
+    IN[摄像头或本地视频]
+
+    subgraph UI[用户交互层]
+        DESKTOP[PyQt5 桌面客户端]
+        WEB[Vue 3 管理后台<br/>当前扩展]
+    end
+
+    subgraph BIZ[业务逻辑层]
+        THREAD[DetectionThread 检测线程]
+        API[Flask REST API<br/>当前扩展]
+    end
+
+    subgraph CORE[核心检测层]
+        YOLO[YOLOv8<br/>危险行为检测]
+        FATIGUE[MediaPipe<br/>疲劳检测]
+        FACE[InsightFace<br/>人脸认证]
+        ALERT[AlertEngine<br/>告警引擎]
+    end
+
+    subgraph DATA[数据持久化层]
+        DB[(MySQL 数据库)]
+        SHOT[告警截图目录]
+    end
+
+    IN --> THREAD
+    DESKTOP -->|控制监测| THREAD
+    THREAD -->|帧与检测信号| DESKTOP
+    THREAD -->|逐帧调用| YOLO
+    THREAD -->|逐帧调用| FATIGUE
+    DESKTOP -->|认证对话框| FACE
+    FACE -->|查询已注册特征| DB
+    THREAD -->|异常事件| ALERT
+    ALERT --> SHOT
+    ALERT -->|告警记录| DB
+    DB <--> API
+    API <--> WEB
 ```
 
 - **数据持久化层**：保存驾驶员、监测会话和告警记录；截图目录与运行数据默认不公开。
 - **核心检测层**：封装危险行为、疲劳状态、人脸特征与预警处理。
 - **业务逻辑层**：协调视频源、检测器、会话、告警和服务端数据访问。
 - **用户交互层**：提供桌面实时监测界面及扩展后的 Web 管理界面。
+
+图中的 PyQt5、检测器、认证、告警与 MySQL 属于软著登记版本的核心范围；Flask REST API 与 Vue 3 管理后台为当前仓库的后续扩展。
+
+### 2. 监测业务流程
+
+```mermaid
+flowchart TD
+    START([程序启动]) --> DEP{依赖检查通过}
+    DEP -- 否 --> START_ERR[记录错误并退出]
+    DEP -- 是 --> CFG{配置加载成功}
+    CFG -- 否 --> START_ERR
+    CFG -- 是 --> UI_INIT[创建 Qt 应用与主窗口]
+    UI_INIT --> SOURCE[选择摄像头或本地视频]
+    SOURCE --> OPEN{视频源打开成功}
+    OPEN -- 否 --> VIDEO_ERR[显示错误并等待重新选择]
+    VIDEO_ERR --> SOURCE
+    OPEN -- 是 --> PREVIEW[DetectionThread 启动视频预览]
+    PREVIEW --> AUTH{驾驶员认证成功}
+    AUTH -- 否或取消 --> PREVIEW
+    AUTH -- 异常 --> AUTH_ERR[记录并显示认证错误]
+    AUTH_ERR --> PREVIEW
+    AUTH -- 是 --> MONITOR[创建检测器与告警引擎<br/>创建监测会话并启用检测]
+    MONITOR --> FRAME{读取到视频帧}
+    FRAME -- 读取错误 --> FRAME
+    FRAME -- 视频结束 --> STOP
+    FRAME -- 是 --> DETECT[YOLOv8 与 MediaPipe 检测]
+    DETECT --> DISPLAY[发送视频帧和检测结果<br/>更新状态面板与 FPS]
+    DETECT --> HAS_ALERT{是否产生异常事件}
+    HAS_ALERT -- 是 --> ALERT_FLOW[交给告警逻辑]
+    HAS_ALERT -- 否 --> END_CHECK
+    DISPLAY --> END_CHECK{停止监测}
+    ALERT_FLOW --> END_CHECK
+    END_CHECK -- 否 --> FRAME
+    END_CHECK -- 是 --> STOP[结束会话并关闭检测<br/>保留视频预览]
+```
+
+预览阶段关闭行为与疲劳检测；认证成功后才创建检测器、告警引擎和监测会话。视频源打不开、配置加载失败或认证异常时分别进入源码对应的错误处理分支。
+
+### 3. 告警触发逻辑
+
+```mermaid
+flowchart TD
+    FRAME[当前视频帧] --> YOLO_CHECK[YOLOv8 行为检测]
+    FRAME --> FATIGUE_CHECK[MediaPipe 疲劳检测]
+    YOLO_CHECK --> YOLO_COUNT{同类行为达到<br/>连续帧阈值}
+    FATIGUE_CHECK --> FATIGUE_COUNT{闭眼 打哈欠或低头<br/>达到各自连续帧阈值}
+    YOLO_COUNT -- 否 --> UI_UPDATE[发送检测结果并更新状态面板]
+    FATIGUE_COUNT -- 否 --> UI_UPDATE
+    YOLO_COUNT -- 是 --> MERGE[汇总异常类型]
+    FATIGUE_COUNT -- 是 --> MERGE
+    MERGE --> UI_UPDATE
+    MERGE --> READY{AlertEngine 与数据库<br/>是否可用}
+    READY -- 否 --> NEXT[跳过持久化告警处理]
+    READY -- 是 --> COOL{该告警类型是否处于<br/>默认 30 秒冷却期}
+    COOL -- 是 --> SUPPRESS[抑制同类重复告警]
+    COOL -- 否 --> SNAP[保存当前帧截图]
+    SNAP --> SOUND[播放告警音效]
+    SOUND --> DB_WRITE[写入数据库告警记录]
+    DB_WRITE --> UPDATE_COOL[更新该类型冷却时间]
+    UPDATE_COOL --> NEXT_FRAME([处理下一帧])
+    SUPPRESS --> NEXT_FRAME
+    NEXT --> NEXT_FRAME
+    UI_UPDATE --> NEXT_FRAME
+```
+
+连续帧阈值在 YOLOv8 与 MediaPipe 检测器内部独立判断；`DetectionThread` 只汇总已经触发的异常。状态面板接收检测结果并更新，`AlertEngine` 则按告警类型独立执行冷却、截图、音效与数据库记录。
 
 ## 技术亮点
 
@@ -122,7 +224,7 @@ docs/training_curves/ 历史训练曲线与原始 results.csv
 
 ## 测试状态
 
-发布准备阶段在项目指定 Conda 环境中完成全量 pytest：**494 passed，0 failed，0 skipped**。该结果覆盖自动化测试，但不等同于 GPU 推理、摄像头、MySQL、模型精度或真实道路场景的端到端验证。
+发布准备阶段在项目指定 Conda 环境中完成全量 pytest：**494 passed，0 failed，0 skipped**。此外，已在 Windows 本机启动 PyQt5 客户端并成功显示摄像头画面。MySQL 凭据尚未完成配置，因此人脸注册及完整业务闭环尚未验证；现有验证也不代表模型精度或真实道路场景表现。
 
 ## 安全与隐私
 
